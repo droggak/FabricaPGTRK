@@ -109,7 +109,25 @@ class StoryModel {
         if(!empty($f['date_from'])){$w[]='DATE(s.created_at)>=?';$p[]=$f['date_from'];}
         if(!empty($f['date_to'])){$w[]='DATE(s.created_at)<=?';$p[]=$f['date_to'];}
         [$sql,$params]=$this->buildQuery($w,$p,$limit,$offset);
-        return $this->db->rows($sql,$params);
+        $rows=$this->db->rows($sql,$params);
+        if(empty($rows)) return $rows;
+        // Загружаем корреспондентов из story_team одним запросом
+        $ids=array_column($rows,'id');
+        $ph=implode(',',array_fill(0,count($ids),'?'));
+        try{
+            $team=$this->db->rows(
+                "SELECT st.story_id,st.role_slot,u.name FROM story_team st JOIN users u ON u.id=st.user_id WHERE st.story_id IN({$ph})",
+                $ids
+            );
+            $teamMap=[];
+            foreach($team as $t) $teamMap[$t['story_id']][$t['role_slot']][]=$t['name'];
+            foreach($rows as &$row) $row['team_by_role']=$teamMap[$row['id']]??[];
+            unset($row);
+        }catch(\Exception $e){
+            foreach($rows as &$row) $row['team_by_role']=[];
+            unset($row);
+        }
+        return $rows;
     }
 
     // Специальный метод для плана съёмок — простой запрос без лишних JOIN
