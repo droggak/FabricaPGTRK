@@ -85,13 +85,13 @@ $periodLabel=$PERIODS[$period??'today']??'Сегодня';
     <thead>
       <tr>
         <th>Сюжет</th><th>Передача</th><th>Тип</th><th>Статус</th>
-        <th>Важн.</th><th>Съёмка</th><th>Эфир</th><th>Автор</th><th>★</th>
+        <th>Важн.</th><th>Съёмка</th><th>Эфир</th><th>Создал</th><th>Корреспонденты</th><th>★</th>
         <th style="width:90px"></th>
       </tr>
     </thead>
     <tbody>
     <?php if(empty($stories)): ?>
-      <tr><td colspan="10">
+      <tr><td colspan="11">
         <div class="empty-state" style="padding:40px">
           <div class="empty-icon">📭</div>
           <div class="empty-text">Нет сюжетов за выбранный период</div>
@@ -113,7 +113,13 @@ $periodLabel=$PERIODS[$period??'today']??'Сегодня';
         </td>
         <td onclick="location.href='/stories/<?=$s['id']?>'" style="cursor:pointer;color:var(--text2)"><?=Input::e($s['shoot_date']??'—')?></td>
         <td onclick="location.href='/stories/<?=$s['id']?>'" style="cursor:pointer;color:var(--text2)"><?=Input::e($s['air_date']??'—')?></td>
-        <td onclick="location.href='/stories/<?=$s['id']?>'" style="cursor:pointer;color:var(--text2)"><?=Input::e($s['reporter_name']??$s['creator_name']??'—')?></td>
+        <td onclick="location.href='/stories/<?=$s['id']?>'" style="cursor:pointer;color:var(--text2);font-size:12px"><?=Input::e($s['creator_name']??'—')?></td>
+        <td onclick="location.href='/stories/<?=$s['id']?>'" style="cursor:pointer;color:var(--text2);font-size:12px"><?php
+          // Корреспонденты: из story_team (slot=reporter) + основной reporter_name
+          $reps=$s['team_by_role']['reporter']??[];
+          if(!empty($s['reporter_name'])&&!in_array($s['reporter_name'],$reps)) array_unshift($reps,$s['reporter_name']);
+          echo Input::e($reps?implode(', ',$reps):'—');
+        ?></td>
         <td onclick="location.href='/stories/<?=$s['id']?>'" style="cursor:pointer"><?=starsIdx($s['avg_rating']?(float)$s['avg_rating']:null)?></td>
 
         <!-- Последняя ячейка — кнопки, БЕЗ onclick на td -->
