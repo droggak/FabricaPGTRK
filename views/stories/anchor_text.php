@@ -3,6 +3,12 @@ use App\Core\Input;
 $SC=['запланировано'=>'s-planned','снято'=>'s-shot','на проверке'=>'s-review','проверено'=>'s-checked',
      'смонтировано'=>'s-edited','отсмотрено'=>'s-viewed','готово'=>'s-ready','вышло в эфир'=>'s-aired','отменено'=>'s-cancelled'];
 $COLS=['accent'=>'#6c8bff','purple'=>'#a78bfa','green'=>'#3ecf8e','amber'=>'#f7b731','red'=>'#f06b6b','teal'=>'#2dd4bf'];
+$period   = $period   ?? 'today';
+$dateFrom = $dateFrom ?? '';
+$dateTo   = $dateTo   ?? '';
+$showId   = $showId   ?? 0;
+$PERIODS  = ['today'=>'Сегодня','3days'=>'3 дня','week'=>'Неделя','month'=>'Месяц','all'=>'Все','custom'=>'Период…'];
+
 $list=array_values(array_filter($stories,fn($s)=>
     $s['status']!=='отменено'&&(!empty($s['latest_text'])||!empty($s['description']))
 ));
@@ -112,6 +118,39 @@ body.tp-active #tp-ctrl{display:flex;}
     <button class="btn btn-ghost btn-sm no-print" onclick="collapseAll()">▵ Свернуть</button>
     <button class="btn btn-ghost btn-sm no-print" onclick="window.print()">🖨 Печать</button>
   </div>
+</div>
+
+<!-- Кнопки периода (скрываются в суфлёре через .ac-filters) -->
+<div class="page-body ac-filters" style="padding-top:0;padding-bottom:8px">
+  <div style="display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;margin-bottom:8px">
+    <?php foreach($PERIODS as $key=>$label): ?>
+      <a href="/anchor-text?period=<?=$key?>&show_id=<?=$showId?>"
+         class="btn btn-sm <?=$period===$key?'btn-accent':'btn-ghost'?>"
+         style="flex-shrink:0;white-space:nowrap"><?=$label?></a>
+    <?php endforeach; ?>
+  </div>
+  <?php if($period==='custom'): ?>
+  <form method="GET" action="/anchor-text" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+    <input type="hidden" name="period" value="custom">
+    <input type="date" name="date_from" class="filter-select" value="<?=Input::e($dateFrom)?>" style="width:150px">
+    <span style="color:var(--text3)">—</span>
+    <input type="date" name="date_to" class="filter-select" value="<?=Input::e($dateTo)?>" style="width:150px">
+    <button type="submit" class="btn btn-ghost btn-sm">Применить</button>
+  </form>
+  <?php endif; ?>
+  <form method="GET" action="/anchor-text" style="display:flex;gap:8px">
+    <input type="hidden" name="period" value="<?=Input::e($period)?>">
+    <?php if($period==='custom'&&$dateFrom): ?>
+      <input type="hidden" name="date_from" value="<?=Input::e($dateFrom)?>">
+      <input type="hidden" name="date_to"   value="<?=Input::e($dateTo)?>">
+    <?php endif; ?>
+    <select class="filter-select" name="show_id" onchange="this.form.submit()">
+      <option value="">Все передачи</option>
+      <?php foreach($shows as $sh): ?>
+        <option value="<?=$sh['id']?>" <?=$showId==$sh['id']?'selected':''?>><?=Input::e($sh['name'])?></option>
+      <?php endforeach; ?>
+    </select>
+  </form>
 </div>
 
 <div class="page-body" id="anchor-list">
