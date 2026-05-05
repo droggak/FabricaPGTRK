@@ -7,7 +7,23 @@ use App\Models\UserModel;
 
 class AdminController extends BaseController {
     public function users(array $p): void {
-        Auth::requireAdmin();$users=(new UserModel())->getAll();$this->view('admin/users',compact('users'));
+        Auth::requireAdmin();
+        $search  = \App\Core\Input::str('search','get');
+        $page    = max(1, \App\Core\Input::int('page','get',1));
+        $perPage = 25;
+        $all     = (new UserModel())->getAll();
+        // Фильтр по поиску
+        if($search){
+            $sq = mb_strtolower($search,'UTF-8');
+            $all = array_values(array_filter($all, fn($u)=>
+                str_contains(mb_strtolower($u['name'],'UTF-8'), $sq) ||
+                str_contains(mb_strtolower($u['login'],'UTF-8'), $sq)
+            ));
+        }
+        $total = count($all);
+        $pages = (int)ceil($total / $perPage);
+        $users = array_slice($all, ($page-1)*$perPage, $perPage);
+        $this->view('admin/users', compact('users','page','pages','total','search'));
     }
     public function userCreateForm(array $p): void {
         Auth::requireAdmin();$this->view('admin/user_form',['user'=>null,'roles'=>UserModel::ROLES]);

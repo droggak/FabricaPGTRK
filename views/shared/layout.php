@@ -20,7 +20,11 @@ $RL=['admin'=>'Администратор','coordinator'=>'Координато�
 <script>
 (function(){
   var saved=localStorage.getItem('fn_theme');
-  var sys=window.matchMedia&&window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark';
+  var sys='light'; // светлая по умолчанию
+  if(window.matchMedia){
+    // Если система явно задала тёмную — используем тёмную
+    sys=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';
+  }
   document.documentElement.setAttribute('data-theme', saved||sys);
 })();
 </script>
@@ -124,7 +128,7 @@ function toggleTheme(){
 }
 // Инициализация иконки после загрузки
 (function(){
-  applyTheme(document.documentElement.getAttribute('data-theme')||'dark');
+  applyTheme(document.documentElement.getAttribute('data-theme')||'light');
   if(window.matchMedia){
     window.matchMedia('(prefers-color-scheme:light)').addEventListener('change',function(e){
       if(!localStorage.getItem('fn_theme')) applyTheme(e.matches?'light':'dark');

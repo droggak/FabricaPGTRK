@@ -80,8 +80,14 @@ foreach($stories as $s){
     <td><span class="status-badge <?=$SC[$s['status']]??''?>"><?=Input::e($s['status'])?></span></td>
     <td class="mono text-muted" style="white-space:nowrap"><?=Input::e($s['shoot_date']??'—')?></td>
     <td class="text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?=Input::e($s['shoot_location']??'—')?></td>
-    <td class="text-muted"><?=Input::e($s['reporter_name']??'—')?></td>
-    <td class="text-muted"><?=Input::e($s['operator_name']??'—')?></td>
+    <td class="text-muted"><?php
+      $m=array_merge($s['team_by_role']['reporter']??[],$s['reporter_name']&&!in_array($s['reporter_name'],$s['team_by_role']['reporter']??[])?[$s['reporter_name']]:[]);
+      echo Input::e($m?implode(', ',$m):'—');
+    ?></td>
+    <td class="text-muted"><?php
+      $m=array_merge($s['team_by_role']['operator']??[],$s['operator_name']&&!in_array($s['operator_name'],$s['team_by_role']['operator']??[])?[$s['operator_name']]:[]);
+      echo Input::e($m?implode(', ',$m):'—');
+    ?></td>
     <td><?=$s['show_id']?"<span class='show-badge' style='background:{$c}22;color:{$c}'>".Input::e($s['show_name'])."</span>":'—'?></td>
     <td><span class="bi bi<?=(int)$s['importance']?>"><?=(int)$s['importance']?></span></td>
   </tr>
@@ -112,7 +118,10 @@ foreach($stories as $s){
     <td><span style="font-weight:500"><?=Input::e($s['title'])?></span></td>
     <td><span class="status-badge <?=$SC[$s['status']]??''?>"><?=Input::e($s['status'])?></span></td>
     <td><?=$s['show_id']?"<span class='show-badge' style='background:{$c}22;color:{$c}'>".Input::e($s['show_name'])."</span>":'—'?></td>
-    <td class="text-muted"><?=Input::e($s['reporter_name']??'—')?></td>
+    <td class="text-muted"><?php
+      $m=array_merge($s['team_by_role']['reporter']??[],$s['reporter_name']&&!in_array($s['reporter_name'],$s['team_by_role']['reporter']??[])?[$s['reporter_name']]:[]);
+      echo Input::e($m?implode(', ',$m):'—');
+    ?></td>
     <td class="text-muted mono"><?=Input::e($s['air_date']??'—')?></td>
     <td><span class="bi bi<?=(int)$s['importance']?>"><?=(int)$s['importance']?></span></td>
   </tr>
