@@ -204,23 +204,18 @@ class StoryController extends BaseController {
 
     public function anchorText(array $p): void {
         Auth::require();
-        $date  =Input::date('date','get')?:date('Y-m-d');
-        $showId=Input::int('show_id','get');
-        // Показываем сюжеты с датой эфира = выбранная дата
-        // + готовые/проверенные сюжеты без даты эфира
-        $f=['air_date'=>$date,'not_cancelled'=>true];
-        if($showId) $f['show_id']=$showId;
-        $byAir=$this->m->getList($f);
-        // Дополнительно: сюжеты без air_date в статусе "готово"/"проверено"
-        $f2=['has_air_date'=>false,'not_cancelled'=>true,'status'=>'готово'];
-        if($showId) $f2['show_id']=$showId;
-        $ready=$this->m->getList($f2);
-        // Убираем дубли
-        $seen=array_column($byAir,'id');
-        foreach($ready as $r){ if(!in_array($r['id'],$seen)){$byAir[]=$r;} }
-        $stories=$byAir;
+        $period  = Input::str('period','get') ?: 'today';
+        $dateFrom= Input::date('date_from','get');
+        $dateTo  = Input::date('date_to','get');
+        $showId  = Input::int('show_id','get');
+        [$dateFrom,$dateTo] = $this->resolvePeriod($period,$dateFrom,$dateTo);
+        $f = ['not_cancelled'=>true];
+        if($dateFrom) $f['date_from']=$dateFrom;
+        if($dateTo)   $f['date_to']  =$dateTo;
+        if($showId)   $f['show_id']  =$showId;
+        $stories=$this->m->getList($f);
         $shows=(new ShowModel())->getAll();
-        $this->view('stories/anchor_text',compact('stories','shows','date','showId'));
+        $this->view('stories/anchor_text',compact('stories','shows','period','dateFrom','dateTo','showId'));
     }
 
     public function reports(array $p): void {
