@@ -99,7 +99,18 @@ class Input
         $token = $_POST['_csrf'] ?? '';
         if (!hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
             http_response_code(403);
-            die('Недействительный CSRF токен.');
+            // Определяем тип запроса: AJAX → JSON, обычный → текст
+            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH'])
+                   || str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')
+                   || !empty($_POST['_csrf']); // fetch с FormData — нет заголовка X-Requested-With
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                die(json_encode([
+                    'ok'    => false,
+                    'error' => 'Сессия устарела. Обновите страницу (F5).'
+                ]));
+            }
+            die('Недействительный CSRF токен. <a href="/">На главную</a>');
         }
     }
 

@@ -147,15 +147,33 @@ class StoryController extends BaseController {
     }
 
     public function changeStatus(array $p): void {
-        Auth::requireCanChangeStatus();Input::verifyCsrf();
-        $id=(int)$p['id'];$status=Input::enum('status',StoryModel::STATUSES);
-        if(!$status)$this->json(['ok'=>false,'error'=>'Недопустимый статус'],422);
+        // Для AJAX — возвращаем JSON при любой ошибке
+        if(empty($_SESSION['user_id'])){
+            $this->json(['ok'=>false,'error'=>'Сессия истекла, перезагрузите страницу'],401);
+        }
+        if(!Auth::hasRole(['admin','coordinator','reporter','editor','release','montager'])){
+            $this->json(['ok'=>false,'error'=>'Нет прав'],403);
+        }
+        Input::verifyCsrf();
+        $id=(int)$p['id'];
+        $status=Input::enum('status',StoryModel::STATUSES);
+        if(!$status){
+            // Пробуем найти статус без строгой проверки для диагностики
+            $raw=Input::str('status');
+            $this->json(['ok'=>false,'error'=>'Недопустимый статус: "'.$raw.'"'],422);
+        }
         $ok=$this->m->changeStatus($id,$status,Auth::user()['id']);
-        $this->json(['ok'=>$ok]);
+        if(!$ok){
+            $s=$this->m->getRawStatus($id);
+            $this->json(['ok'=>false,'error'=>'Переход недопустим: "'.$s.'" → "'.$status.'"'],422);
+        }
+        $this->json(['ok'=>true]);
     }
 
     public function assign(array $p): void {
-        Auth::requireCanAssign();Input::verifyCsrf();
+        if(empty($_SESSION['user_id'])){$this->json(['ok'=>false,'error'=>'Сессия истекла'],401);}
+        if(!Auth::hasRole(['admin','coordinator','editor'])){$this->json(['ok'=>false,'error'=>'Нет прав'],403);}
+        Input::verifyCsrf();
         $id=(int)$p['id'];
         $role=Input::enum('role',['reporter','operator','editor','montager','driver','voiceover']);
         $uid=Input::int('user_id')?:null;
@@ -204,23 +222,18 @@ class StoryController extends BaseController {
 
     public function anchorText(array $p): void {
         Auth::require();
-        $date  =Input::date('date','get')?:date('Y-m-d');
-        $showId=Input::int('show_id','get');
-        // Показываем сюжеты с датой эфира = выбранная дата
-        // + готовые/проверенные сюжеты без даты эфира
-        $f=['air_date'=>$date,'not_cancelled'=>true];
-        if($showId) $f['show_id']=$showId;
-        $byAir=$this->m->getList($f);
-        // Дополнительно: сюжеты без air_date в статусе "готово"/"проверено"
-        $f2=['has_air_date'=>false,'not_cancelled'=>true,'status'=>'готово'];
-        if($showId) $f2['show_id']=$showId;
-        $ready=$this->m->getList($f2);
-        // Убираем дубли
-        $seen=array_column($byAir,'id');
-        foreach($ready as $r){ if(!in_array($r['id'],$seen)){$byAir[]=$r;} }
-        $stories=$byAir;
+        $period  = Input::str('period','get') ?: 'today';
+        $dateFrom= Input::date('date_from','get');
+        $dateTo  = Input::date('date_to','get');
+        $showId  = Input::int('show_id','get');
+        [$dateFrom,$dateTo] = $this->resolvePeriod($period,$dateFrom,$dateTo);
+        $f = ['not_cancelled'=>true];
+        if($dateFrom) $f['date_from']=$dateFrom;
+        if($dateTo)   $f['date_to']  =$dateTo;
+        if($showId)   $f['show_id']  =$showId;
+        $stories=$this->m->getList($f);
         $shows=(new ShowModel())->getAll();
-        $this->view('stories/anchor_text',compact('stories','shows','date','showId'));
+        $this->view('stories/anchor_text',compact('stories','shows','period','dateFrom','dateTo','showId'));
     }
 
     public function reports(array $p): void {

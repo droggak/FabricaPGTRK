@@ -10,7 +10,10 @@ function renderTextMarkdown(string $t): string {
     $t = preg_replace('/\[синхрон\]/', '<span style="background:rgba(247,183,49,.15);color:var(--amber);padding:1px 6px;border-radius:4px;font-style:italic;font-size:.9em">[синхрон]</span>', $t);
     return nl2br($t);
 }
-$SC=['запланировано'=>'s-planned','снято'=>'s-shot','на проверке'=>'s-review','проверено'=>'s-checked','смонтировано'=>'s-edited','отсмотрено'=>'s-viewed','готово'=>'s-ready','вышло в эфир'=>'s-aired','отменено'=>'s-cancelled'];
+$SC=['запланировано'=>'s-planned','снято'=>'s-shot',
+     'на проверке (редактор)'=>'s-review','на проверке (гл.редактор)'=>'s-review2',
+     'проверено'=>'s-checked','смонтировано'=>'s-edited','отсмотрено'=>'s-viewed',
+     'готово'=>'s-ready','вышло в эфир'=>'s-aired','отменено'=>'s-cancelled'];
 $COLS=['accent'=>'#6c8bff','purple'=>'#a78bfa','green'=>'#3ecf8e','amber'=>'#f7b731','red'=>'#f06b6b','teal'=>'#2dd4bf'];
 $canSt=Auth::hasRole(['coordinator','reporter','editor','release','admin']);
 $canAs=Auth::hasRole(['coordinator','editor','admin']);
@@ -130,7 +133,25 @@ function tmR($story,$users,$key,$label,$canAs,$teamMembers=[]){
 <div>
   <div class="detail-card">
     <div class="detail-card-title">Прогресс</div>
-    <div class="status-flow"><?php $i=0;foreach($flow as $st): ?><span class="status-step <?=$i<$curIdx?'done':($i==$curIdx?'current':'')  ?>"><?=Input::e($st)?></span><?php if($i<count($flow)-1): ?><span class="status-arrow">→</span><?php endif;$i++; endforeach; ?></div>
+    <div class="status-flow"><?php
+    $stepLabels=['запланировано'=>'Запланировано','снято'=>'Снято',
+      'на проверке (редактор)'=>'Ред.','на проверке (гл.редактор)'=>'Гл.ред.',
+      'проверено'=>'Проверено','смонтировано'=>'Монтаж',
+      'отсмотрено'=>'Отсмотрено','готово'=>'Готово','вышло в эфир'=>'В эфире'];
+    $flowSteps=array_keys($stepLabels);
+    $curStepIdx=array_search($story['status'],$flowSteps,true);
+    if($story['status']==='отменено'){
+        echo '<span class="status-badge s-cancelled">✕ Отменено</span>';
+    } else {
+        foreach($flowSteps as $si=>$st){
+            $done=$curStepIdx!==false&&$si<$curStepIdx;
+            $active=$curStepIdx!==false&&$si===$curStepIdx;
+            $cls=$done?'done':($active?'current':'');
+            echo '<span class="status-step '.$cls.'" title="'.Input::e($st).'">'.Input::e($stepLabels[$st]).'</span>';
+            if($si<count($flowSteps)-1) echo '<span class="status-arrow">→</span>';
+        }
+    }
+    ?></div>
     <?php if($canSt&&$story['status']!=='отменено'): ?>
     <div class="btn-group" style="margin-top:12px">
       <?php foreach(StoryModel::FLOW[$story['status']]??[] as $ns): $cls=$ns==='отменено'?'btn-danger':'btn-success'; ?>
@@ -155,18 +176,118 @@ function tmR($story,$users,$key,$label,$canAs,$teamMembers=[]){
 
   <div class="detail-card">
     <div class="detail-card-title">Хронометраж</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="detail-field"><div class="detail-label">Планируемый</div><div class="detail-value mono"><?=Input::e($story['estimated_duration']??'—')?></div></div>
-      <div class="detail-field"><div class="detail-label">Фактический</div><div class="detail-value mono"><?=Input::e($story['duration']??'—')?></div></div>
+    <style>
+    .time-picker{display:inline-flex;align-items:center;
+      background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+      font-family:var(--mono);padding:7px 10px;gap:2px;width:100%;}
+    .time-picker:focus-within{border-color:var(--accent);}
+    .time-seg{display:flex;flex-direction:column;align-items:center;flex:1;}
+    .time-seg-inp{width:100%;border:none;background:none;color:var(--text);
+      font-family:var(--mono);font-size:13px;font-weight:600;text-align:center;
+      outline:none;padding:2px 0;line-height:1;}
+    .time-seg-btn{width:100%;border:none;background:none;color:var(--text3);cursor:pointer;
+      font-size:8px;padding:1px 0;line-height:1;transition:color .15s;}
+    .time-seg-btn:hover{color:var(--accent);}
+    .time-sep{font-size:13px;font-weight:600;color:var(--text3);padding:0 2px;
+      align-self:center;line-height:1;flex-shrink:0;}
+    .tp-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+    </style>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <div class="tp-label">Планируемый</div>
+        <div class="time-picker" id="tp-est-<?=$story['id']?>"></div>
+      </div>
+      <div>
+        <div class="tp-label">Фактический</div>
+        <div class="time-picker" id="tp-dur-<?=$story['id']?>"></div>
+        <?php if($canSt): ?>
+        <button class="btn btn-sm btn-ghost" style="margin-top:8px"
+                onclick="saveDuration(<?=$story['id']?>)">Сохранить фактический</button>
+        <?php endif; ?>
+      </div>
     </div>
-    <?php if($canSt): ?>
-    <div style="margin-top:12px"><div class="detail-label" style="margin-bottom:6px">Установить фактический</div>
-    <div style="display:flex;gap:8px">
-      <input type="text" id="dur-input-<?=$story['id']?>" value="<?=Input::e($story['duration']??'')?>" placeholder="00:02:30" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;width:130px">
-      <button class="btn btn-sm btn-ghost" data-save-duration data-story-id="<?=$story['id']?>">Сохранить</button>
-    </div></div>
-    <?php endif; ?>
   </div>
+
+  <script>
+  (function(){
+    var sid=<?=$story['id']?>;
+    var estVal='<?=Input::e($story['estimated_duration']??'00:00:00')?>';
+    var durVal='<?=Input::e($story['duration']??'00:00:00')?>';
+
+    function pad(n){return String(n).padStart(2,'0');}
+
+    function makeTP(containerId,initVal,readOnly){
+      var el=document.getElementById(containerId);
+      if(!el)return;
+      var p=(initVal||'00:00:00').split(':');
+      var hh=Math.min(23,parseInt(p[0])||0);
+      var mm=Math.min(59,parseInt(p[1])||0);
+      var ss=Math.min(59,parseInt(p[2])||0);
+      function val(){return pad(hh)+':'+pad(mm)+':'+pad(ss);}
+      function update(){
+        var ih=document.getElementById(containerId+'-h');if(ih)ih.value=pad(hh);
+        var im=document.getElementById(containerId+'-m');if(im)im.value=pad(mm);
+        var is=document.getElementById(containerId+'-s');if(is)is.value=pad(ss);
+      }
+      function adj(seg,delta){
+        if(seg==='h')hh=(hh+delta+24)%24;
+        if(seg==='m')mm=(mm+delta+60)%60;
+        if(seg==='s')ss=(ss+delta+60)%60;
+        update();
+      }
+      // Строим из input-ов
+      el.innerHTML='';
+      ['h','m','s'].forEach(function(seg,i){
+        if(i>0){var sep=document.createElement('span');sep.className='time-sep';sep.textContent=':';el.appendChild(sep);}
+        var div=document.createElement('div');div.className='time-seg';
+        var up=document.createElement('button');up.type='button';up.className='time-seg-btn';up.textContent='▲';
+        var inp=document.createElement('input');
+        inp.type='text';inp.inputMode='numeric';inp.pattern='[0-9]*';inp.maxLength=2;
+        inp.className='time-seg-inp';inp.id=containerId+'-'+seg;
+        inp.value=pad(seg==='h'?hh:seg==='m'?mm:ss);
+        var dn=document.createElement('button');dn.type='button';dn.className='time-seg-btn';dn.textContent='▼';
+        if(!readOnly){
+          up.addEventListener('click',function(e){e.preventDefault();adj(seg,1);});
+          dn.addEventListener('click',function(e){e.preventDefault();adj(seg,-1);});
+          inp.addEventListener('change',function(){
+            var v=Math.min(parseInt(this.value)||0,seg==='h'?23:59);
+            v=Math.max(0,v);
+            if(seg==='h')hh=v;if(seg==='m')mm=v;if(seg==='s')ss=v;
+            this.value=pad(v);
+          });
+          inp.addEventListener('keydown',function(e){
+            if(e.key==='ArrowUp'){e.preventDefault();adj(seg,1);}
+            if(e.key==='ArrowDown'){e.preventDefault();adj(seg,-1);}
+          });
+          inp.addEventListener('wheel',function(e){
+            e.preventDefault();adj(seg,e.deltaY<0?1:-1);
+          },{passive:false});
+        } else {
+          up.style.visibility='hidden';dn.style.visibility='hidden';
+          inp.readOnly=true;inp.style.color='var(--text2)';
+        }
+        div.appendChild(up);div.appendChild(inp);div.appendChild(dn);
+        el.appendChild(div);
+      });
+      return {val:val};
+    }
+
+    var tpEst=makeTP('tp-est-'+sid, estVal, true);  // планируемый — только просмотр
+    var tpDur=makeTP('tp-dur-'+sid, durVal, <?=$canSt?'false':'true'?>);
+
+    window.saveDuration=window.saveDuration||function(id){
+      var h=document.getElementById('tp-dur-'+id+'-h')?.value||'00';
+      var m=document.getElementById('tp-dur-'+id+'-m')?.value||'00';
+      var s=document.getElementById('tp-dur-'+id+'-s')?.value||'00';
+      var v=(h.length<2?'0'+h:h)+':'+(m.length<2?'0'+m:m)+':'+(s.length<2?'0'+s:s);
+      apiPost('/stories/'+id+'/duration',{duration:v})
+        .then(function(r){
+          if(r.ok) toast('Хронометраж сохранён');
+          else toast(r.error||'Ошибка','err');
+        });
+    };
+  })();
+  </script>
 
   <?php if(!empty($story['persons'])): ?>
   <div class="detail-card">
@@ -464,10 +585,15 @@ $canCheck = Auth::hasRole(['editor','coordinator','release','admin']);
         · ⏱ <?=chrF($latestVersion['content'])?>
       </div>
     </div>
-    <?php if($canCheck&&$story['status']==='на проверке'): ?>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-sm btn-success" data-change-status data-story-id="<?=$story['id']?>" data-status="проверено">✓ Одобрить</button>
-      <button class="btn btn-sm btn-danger" data-change-status data-story-id="<?=$story['id']?>" data-status="снято">← Вернуть на доработку</button>
+    <?php if($canCheck&&in_array($story['status'],['на проверке (редактор)','на проверке (гл.редактор)'])): ?>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <?php if($story['status']==='на проверке (редактор)'): ?>
+        <button class="btn btn-sm btn-success" data-change-status data-story-id="<?=$story['id']?>" data-status="на проверке (гл.редактор)">✓ Передать гл. редактору</button>
+        <button class="btn btn-sm btn-danger"  data-change-status data-story-id="<?=$story['id']?>" data-status="снято">← Вернуть на доработку</button>
+      <?php elseif($story['status']==='на проверке (гл.редактор)'): ?>
+        <button class="btn btn-sm btn-success" data-change-status data-story-id="<?=$story['id']?>" data-status="проверено">✓ Одобрить</button>
+        <button class="btn btn-sm btn-danger"  data-change-status data-story-id="<?=$story['id']?>" data-status="на проверке (редактор)">← Вернуть редактору</button>
+      <?php endif; ?>
     </div>
     <?php elseif($canCheck&&$story['status']==='смонтировано'): ?>
     <div style="display:flex;gap:8px">
