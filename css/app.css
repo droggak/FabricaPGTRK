@@ -465,3 +465,5 @@ input[type="date"]{color-scheme:dark;}
 .theme-switch input:checked + .theme-slider::before { transform: translateX(22px); }
 .theme-switch-label { font-size: 14px; color: var(--text2); }
 .theme-switch-label strong { display: block; color: var(--text); font-size: 14px; margin-bottom: 2px; }
+
+.status-badge.s-review2{background:rgba(167,139,250,.15);color:var(--purple);}

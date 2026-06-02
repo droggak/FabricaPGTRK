@@ -4,12 +4,13 @@ use App\Core\DB;
 
 class StoryModel {
     private DB $db;
-    public const STATUSES=['запланировано','снято','на проверке','проверено','смонтировано','отсмотрено','готово','вышло в эфир','отменено'];
+    public const STATUSES=['запланировано','снято','на проверке (редактор)','на проверке (гл.редактор)','проверено','смонтировано','отсмотрено','готово','вышло в эфир','отменено'];
     public const FLOW=[
         'запланировано'=>['снято','отменено'],
-        'снято'=>['на проверке','отменено'],
-        'на проверке'=>['проверено','снято','отменено'],
-        'проверено'=>['смонтировано','на проверке','отменено'],
+        'снято'=>['на проверке (редактор)','отменено'],
+        'на проверке (редактор)'=>['на проверке (гл.редактор)','снято','отменено'],
+        'на проверке (гл.редактор)'=>['проверено','на проверке (редактор)','отменено'],
+        'проверено'=>['смонтировано','на проверке (гл.редактор)','отменено'],
         'смонтировано'=>['отсмотрено','проверено','отменено'],
         'отсмотрено'=>['готово','смонтировано','отменено'],
         'готово'=>['вышло в эфир','отменено'],
@@ -109,7 +110,25 @@ class StoryModel {
         if(!empty($f['date_from'])){$w[]='DATE(s.created_at)>=?';$p[]=$f['date_from'];}
         if(!empty($f['date_to'])){$w[]='DATE(s.created_at)<=?';$p[]=$f['date_to'];}
         [$sql,$params]=$this->buildQuery($w,$p,$limit,$offset);
-        return $this->db->rows($sql,$params);
+        $rows=$this->db->rows($sql,$params);
+        if(empty($rows)) return $rows;
+        // Загружаем корреспондентов из story_team одним запросом
+        $ids=array_column($rows,'id');
+        $ph=implode(',',array_fill(0,count($ids),'?'));
+        try{
+            $team=$this->db->rows(
+                "SELECT st.story_id,st.role_slot,u.name FROM story_team st JOIN users u ON u.id=st.user_id WHERE st.story_id IN({$ph})",
+                $ids
+            );
+            $teamMap=[];
+            foreach($team as $t) $teamMap[$t['story_id']][$t['role_slot']][]=$t['name'];
+            foreach($rows as &$row) $row['team_by_role']=$teamMap[$row['id']]??[];
+            unset($row);
+        }catch(\Exception $e){
+            foreach($rows as &$row) $row['team_by_role']=[];
+            unset($row);
+        }
+        return $rows;
     }
 
     // Специальный метод для плана съёмок — простой запрос без лишних JOIN
@@ -118,7 +137,7 @@ class StoryModel {
         if($date){$w[]='s.shoot_date=?';$p[]=$date;}
         if($showId){$w[]='s.show_id=?';$p[]=$showId;}
         if($search){$w[]='(s.title LIKE ? OR s.shoot_location LIKE ?)';$l='%'.$search.'%';$p[]=$l;$p[]=$l;}
-        return $this->db->rows('
+        $rows=$this->db->rows('
             SELECT s.id, s.title, s.status, s.shoot_date, s.shoot_location,
                    s.air_date, s.importance, s.show_id,
                    sh.name AS show_name, sh.color AS show_color,
@@ -131,6 +150,24 @@ class StoryModel {
             WHERE '.implode(' AND ',$w).'
             ORDER BY s.shoot_date ASC, s.importance DESC
         ',$p);
+        if(empty($rows)) return $rows;
+        // Загружаем всю команду из story_team одним запросом
+        $ids=array_column($rows,'id');
+        $ph=implode(',',array_fill(0,count($ids),'?'));
+        try{
+            $team=$this->db->rows(
+                "SELECT st.story_id,st.role_slot,u.name FROM story_team st JOIN users u ON u.id=st.user_id WHERE st.story_id IN({$ph})",
+                $ids
+            );
+            $teamMap=[];
+            foreach($team as $t) $teamMap[$t['story_id']][$t['role_slot']][]=$t['name'];
+            foreach($rows as &$row) $row['team_by_role']=$teamMap[$row['id']]??[];
+            unset($row);
+        }catch(\Exception $e){
+            foreach($rows as &$row) $row['team_by_role']=[];
+            unset($row);
+        }
+        return $rows;
     }
 
     public function getById(int $id): ?array {
@@ -176,14 +213,21 @@ class StoryModel {
         $this->addLog($id,$uid,'Обновил сюжет');
     }
 
+    public function getRawStatus(int $id): string {
+        $r=$this->db->row('SELECT status FROM stories WHERE id=?',[$id]);
+        return $r?$r['status']:'не найден';
+    }
+
     public function changeStatus(int $id,string $ns,int $uid): bool {
         if(!in_array($ns,self::STATUSES,true))return false;
         $s=$this->db->row('SELECT status FROM stories WHERE id=?',[$id]);
         if(!$s)return false;
         $old=$s['status'];
+        // Обратная совместимость: старый статус "на проверке" = "на проверке (редактор)"
+        if($old==='на проверке') $old='на проверке (редактор)';
         if(!in_array($ns,self::FLOW[$old]??[],true))return false;
         $this->db->updateById('stories',$id,['status'=>$ns]);
-        $this->addLog($id,$uid,"Изменил статус: {$old} → {$ns}");
+        $this->addLog($id,$uid,"Изм. статус: {$old} -> {$ns}");
         if($ns==='вышло в эфир'){
             try{$this->db->query('DELETE FROM story_versions WHERE story_id=? AND id NOT IN (SELECT id FROM (SELECT MAX(id) as id FROM story_versions WHERE story_id=?) t)',[$id,$id]);}catch(\Exception $e){}
         }
@@ -211,7 +255,11 @@ class StoryModel {
     }
 
     public function addLog(int $sid,int $uid,string $a): void {
-        $this->db->insert('logs',['story_id'=>$sid,'user_id'=>$uid,'action'=>mb_substr($a,0,255)]);
+        try {
+            $this->db->insert('logs',['story_id'=>$sid,'user_id'=>$uid,'action'=>mb_substr($a,0,255)]);
+        } catch(\Exception $e) {
+            error_log('addLog failed: '.$e->getMessage());
+        }
     }
 
     public function delete(int $id): void {

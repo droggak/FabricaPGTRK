@@ -8,8 +8,17 @@ async function apiPost(url,data={}){
   data['_csrf']=getCsrf();
   const form=new FormData();
   Object.entries(data).forEach(([k,v])=>form.append(k,v??''));
-  try{const r=await fetch(url,{method:'POST',body:form});return await r.json();}
-  catch(e){return{ok:false,error:'Ошибка сети'};}
+  try{
+    const r=await fetch(url,{method:'POST',body:form});
+    const text=await r.text();
+    try{ return JSON.parse(text); }
+    catch(e){
+      // Сервер вернул не JSON — показываем первые 120 символов для диагностики
+      console.error('apiPost non-JSON response:', text.substring(0,300));
+      return{ok:false,error:'Ошибка сервера: '+text.substring(0,80)};
+    }
+  }
+  catch(e){ return{ok:false,error:'Ошибка сети: '+e.message}; }
 }
 
 // ── Toast ─────────────────────────────────────────────────────
@@ -81,9 +90,15 @@ document.querySelectorAll('[data-change-status]').forEach(btn=>{
 
 // ── Назначение ────────────────────────────────────────────────
 document.querySelectorAll('[data-assign-select]').forEach(sel=>{
+  // Помечаем как загруженный после первого цикла рендера
+  // чтобы не срабатывало при автозаполнении браузером
+  let loaded=false;
+  setTimeout(()=>{ loaded=true; }, 300);
   sel.addEventListener('change',async()=>{
+    if(!loaded) return; // игнорируем change при загрузке страницы
     const r=await apiPost(`/stories/${sel.dataset.storyId}/assign`,{role:sel.dataset.role,user_id:sel.value});
-    if(r.ok)toast('Назначение обновлено'); else toast(r.error||'Ошибка','err');
+    if(r.ok) toast('Назначение обновлено');
+    else toast(r.error||'Ошибка','err');
   });
 });
 

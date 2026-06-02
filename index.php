@@ -10,7 +10,24 @@ spl_autoload_register(function(string $class): void {
 $appCfg = require ROOT.'/config/app.php';
 date_default_timezone_set($appCfg['timezone']);
 if($appCfg['debug']){ ini_set('display_errors','1'); error_reporting(E_ALL); }
-else { ini_set('display_errors','0'); error_reporting(0); }
+else { ini_set('display_errors','0'); error_reporting(E_ALL); }
+
+// Глобальный обработчик — при 500 отдаём JSON с деталями ошибки
+set_exception_handler(function(Throwable $e) {
+    error_log('Uncaught: '.$e->getMessage().' in '.$e->getFile().':'.$e->getLine());
+    if(!headers_sent()){
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok'    => false,
+            // Всегда показываем детали — это внутренняя сеть
+            'error' => $e->getMessage(),
+            'file'  => basename($e->getFile()).':'.$e->getLine(),
+            'trace' => substr($e->getTraceAsString(), 0, 500)
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+});
 
 ini_set('session.cookie_httponly','1');
 ini_set('session.use_strict_mode','1');
@@ -35,6 +52,7 @@ use App\Controllers\AuthController;
 use App\Controllers\DashboardController;
 use App\Controllers\FeedbackController;
 use App\Controllers\StoryController;
+use App\Controllers\ShootPlanController;
 use App\Controllers\AdminController;
 use App\Controllers\ProfileController;
 
@@ -86,5 +104,10 @@ $r->post('/feedback/submit',           [FeedbackController::class,'submit']);
 $r->get( '/admin/feedback',            [FeedbackController::class,'list']);
 $r->post('/admin/feedback/{id}/read',  [FeedbackController::class,'markRead']);
 $r->post('/admin/feedback/{id}/delete',[FeedbackController::class,'delete']);
+
+$r->post('/shoot-plan/upload',          [ShootPlanController::class,'upload']);
+$r->get( '/shoot-plan/files',           [ShootPlanController::class,'list']);
+$r->get( '/shoot-plan/file/{id}',       [ShootPlanController::class,'download']);
+$r->post('/shoot-plan/file/{id}/delete',[ShootPlanController::class,'delete']);
 
 $r->dispatch($_SERVER['REQUEST_METHOD'], $_SERVER['REQUEST_URI']);

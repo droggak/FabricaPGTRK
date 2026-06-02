@@ -1,5 +1,8 @@
 <?php use App\Core\Input;
-$SC=['запланировано'=>'s-planned','снято'=>'s-shot','на проверке'=>'s-review','проверено'=>'s-checked','смонтировано'=>'s-edited','отсмотрено'=>'s-viewed','готово'=>'s-ready','вышло в эфир'=>'s-aired','отменено'=>'s-cancelled'];
+$SC=['запланировано'=>'s-planned','снято'=>'s-shot',
+     'на проверке (редактор)'=>'s-review','на проверке (гл.редактор)'=>'s-review2',
+     'проверено'=>'s-checked','смонтировано'=>'s-edited','отсмотрено'=>'s-viewed',
+     'готово'=>'s-ready','вышло в эфир'=>'s-aired','отменено'=>'s-cancelled'];
 $COLS=['accent'=>'#6c8bff','purple'=>'#a78bfa','green'=>'#3ecf8e','amber'=>'#f7b731','red'=>'#f06b6b','teal'=>'#2dd4bf'];
 $list=array_filter($stories,fn($s)=>!empty($s['air_date'])&&$s['status']!=='отменено');
 usort($list,fn($a,$b)=>$b['importance']-$a['importance']);

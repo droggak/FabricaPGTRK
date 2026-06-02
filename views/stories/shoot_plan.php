@@ -1,126 +1,250 @@
 <?php
 use App\Core\Input;
-$SC=['запланировано'=>'s-planned','снято'=>'s-shot','на проверке'=>'s-review','проверено'=>'s-checked',
-     'смонтировано'=>'s-edited','отсмотрено'=>'s-viewed','готово'=>'s-ready','вышло в эфир'=>'s-aired','отменено'=>'s-cancelled'];
-$COLS=['accent'=>'#6c8bff','purple'=>'#a78bfa','green'=>'#3ecf8e','amber'=>'#f7b731','red'=>'#f06b6b','teal'=>'#2dd4bf'];
-
-// Разбиваем на 2 группы
-$withDate=[];$noDate=[];
-foreach($stories as $s){
-    if(!empty($s['shoot_date'])) $withDate[]=$s;
-    else $noDate[]=$s;
-}
+use App\Middleware\Auth;
+$isCoord = Auth::hasRole(['coordinator','admin']);
 ?>
 <style>
-.shoot-table{width:100%;border-collapse:collapse;font-size:13px;}
-.shoot-table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:500;color:var(--text3);
-  text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border);white-space:nowrap;}
-.shoot-table td{padding:11px 14px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;}
-.shoot-table tr:last-child td{border-bottom:none;}
-.shoot-table tbody tr:hover td{background:rgba(255,255,255,.02);cursor:pointer;}
-.shoot-date-group{background:var(--bg3);border-left:3px solid var(--accent);}
-.shoot-date-group td{padding:8px 14px;font-size:12px;font-weight:600;color:var(--accent);font-family:var(--mono);}
+.shoot-upload-area{border:2px dashed var(--border);border-radius:12px;padding:40px;
+  text-align:center;cursor:pointer;transition:border-color .2s;background:var(--bg3);}
+.shoot-upload-area:hover,.shoot-upload-area.drag{border-color:var(--accent);background:rgba(108,139,255,.05);}
+.shoot-upload-area input[type=file]{display:none;}
+#docx-table-wrap table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;}
+#docx-table-wrap th,#docx-table-wrap td{padding:9px 12px;border:1px solid var(--border);vertical-align:top;word-break:break-word;}
+#docx-table-wrap th{background:var(--bg2);font-weight:600;color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.06em;}
+#docx-table-wrap tr:hover td{background:rgba(255,255,255,.02);}
+.file-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:var(--bg3);
+  border:1px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;
+  transition:border-color .15s;margin:4px;}
+.file-chip:hover{border-color:var(--accent);}
+.file-chip.active{border-color:var(--accent);background:rgba(108,139,255,.08);}
 </style>
 
 <div class="page-header">
-  <div><div class="page-title">План съёмок</div>
-  <div class="page-subtitle">Всего: <?=count($stories)?> сюжетов</div></div>
-  <form method="GET" action="/shoot-plan" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <input type="date" class="filter-select" name="date" value="<?=Input::e($date??'')?>">
-    <select class="filter-select" name="show_id" onchange="this.form.submit()">
+  <div>
+    <div class="page-title">План съёмок</div>
+    <div class="page-subtitle" id="plan-subtitle">Загрузите или выберите план</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input type="date" class="filter-select" id="filter-date" value="<?=Input::e($date??date('Y-m-d'))?>">
+    <select class="filter-select" id="filter-show">
       <option value="">Все передачи</option>
       <?php foreach($shows as $sh): ?>
-        <option value="<?=$sh['id']?>" <?=($showId??0)==$sh['id']?'selected':''?>><?=Input::e($sh['name'])?></option>
+        <option value="<?=$sh['id']?>"><?=Input::e($sh['name'])?></option>
       <?php endforeach; ?>
     </select>
-    <input type="text" class="search-input" name="search" placeholder="🔍 Поиск..." value="<?=Input::e($_GET['search']??'')?>" style="width:180px">
-    <button type="submit" class="btn btn-ghost btn-sm">Применить</button>
-    <a href="/shoot-plan" class="btn btn-ghost btn-sm">Сбросить</a>
-  </form>
+  </div>
 </div>
 
 <div class="page-body">
 
-<?php if(empty($stories)): ?>
-  <div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Нет сюжетов для съёмки</div></div>
-<?php else: ?>
+<!-- Загруженные файлы — видны ВСЕМ -->
+<div style="margin-bottom:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:600;color:var(--text2)">📎 Планы съёмок</div>
+    <button class="btn btn-ghost btn-sm" onclick="loadFiles()">↻</button>
+  </div>
+  <div id="files-list" style="display:flex;flex-wrap:wrap;gap:4px;min-height:40px">
+    <div style="font-size:13px;color:var(--text3)">Загрузка...</div>
+  </div>
+</div>
 
-<!-- С датой съёмки -->
-<?php if(!empty($withDate)): ?>
-<div class="section-title">📅 Запланированные съёмки (<?=count($withDate)?>)</div>
-<div class="table-wrap" style="margin-bottom:20px">
-<table class="shoot-table">
-  <thead><tr>
-    <th style="width:36px">#</th>
-    <th>Сюжет</th>
-    <th>Статус</th>
-    <th>Дата съёмки</th>
-    <th>Место</th>
-    <th>Корреспондент</th>
-    <th>Оператор</th>
-    <th>Передача</th>
-    <th>Важн.</th>
-  </tr></thead>
-  <tbody>
-  <?php
-  $prevDate='';$num=1;
-  foreach($withDate as $s):
-    $c=$COLS[$s['show_color']??'accent']??'#6c8bff';
-    // Разделитель по дате
-    if($s['shoot_date']!==$prevDate):
-      $prevDate=$s['shoot_date'];
-  ?>
-  <tr class="shoot-date-group">
-    <td colspan="9">📅 <?=Input::e($s['shoot_date'])?></td>
-  </tr>
-  <?php endif; ?>
-  <tr onclick="location.href='/stories/<?=$s['id']?>'">
-    <td class="text-dim"><?=$num++?></td>
-    <td><span style="font-weight:500"><?=Input::e($s['title'])?></span></td>
-    <td><span class="status-badge <?=$SC[$s['status']]??''?>"><?=Input::e($s['status'])?></span></td>
-    <td class="mono text-muted" style="white-space:nowrap"><?=Input::e($s['shoot_date']??'—')?></td>
-    <td class="text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?=Input::e($s['shoot_location']??'—')?></td>
-    <td class="text-muted"><?=Input::e($s['reporter_name']??'—')?></td>
-    <td class="text-muted"><?=Input::e($s['operator_name']??'—')?></td>
-    <td><?=$s['show_id']?"<span class='show-badge' style='background:{$c}22;color:{$c}'>".Input::e($s['show_name'])."</span>":'—'?></td>
-    <td><span class="bi bi<?=(int)$s['importance']?>"><?=(int)$s['importance']?></span></td>
-  </tr>
-  <?php endforeach; ?>
-  </tbody>
-</table>
+<!-- Загрузка нового файла — только координатор -->
+<?php if($isCoord): ?>
+<div class="detail-card" style="margin-bottom:20px">
+  <div class="detail-card-title">Загрузить план</div>
+  <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:160px">
+      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Дата плана</label>
+      <input type="date" id="upload-date" class="filter-select" style="width:100%" value="<?=Input::e($date??date('Y-m-d'))?>">
+    </div>
+    <div style="flex:1;min-width:160px">
+      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Передача</label>
+      <select id="upload-show" class="filter-select" style="width:100%">
+        <option value="">— Все —</option>
+        <?php foreach($shows as $sh): ?>
+          <option value="<?=$sh['id']?>"><?=Input::e($sh['name'])?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+  </div>
+  <div class="shoot-upload-area" id="upload-area"
+       onclick="document.getElementById('docx-file').click()"
+       ondragover="event.preventDefault();this.classList.add('drag')"
+       ondragleave="this.classList.remove('drag')"
+       ondrop="handleDrop(event)">
+    <input type="file" id="docx-file" accept=".docx,.doc" onchange="handleFile(this.files[0])">
+    <div style="font-size:36px;margin-bottom:10px">📄</div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px">Загрузить .docx файл</div>
+    <div style="font-size:13px;color:var(--text3)">Перетащите или нажмите для выбора</div>
+  </div>
+  <div id="upload-status" style="margin-top:10px;font-size:13px;color:var(--text3)"></div>
 </div>
 <?php endif; ?>
 
-<!-- Без даты -->
-<?php if(!empty($noDate)): ?>
-<div class="section-title">📭 Без даты съёмки (<?=count($noDate)?>)</div>
-<div class="table-wrap">
-<table class="shoot-table">
-  <thead><tr>
-    <th style="width:36px">#</th>
-    <th>Сюжет</th>
-    <th>Статус</th>
-    <th>Передача</th>
-    <th>Корреспондент</th>
-    <th>Дата эфира</th>
-    <th>Важн.</th>
-  </tr></thead>
-  <tbody>
-  <?php $num=1;foreach($noDate as $s): $c=$COLS[$s['show_color']??'accent']??'#6c8bff'; ?>
-  <tr onclick="location.href='/stories/<?=$s['id']?>'">
-    <td class="text-dim"><?=$num++?></td>
-    <td><span style="font-weight:500"><?=Input::e($s['title'])?></span></td>
-    <td><span class="status-badge <?=$SC[$s['status']]??''?>"><?=Input::e($s['status'])?></span></td>
-    <td><?=$s['show_id']?"<span class='show-badge' style='background:{$c}22;color:{$c}'>".Input::e($s['show_name'])."</span>":'—'?></td>
-    <td class="text-muted"><?=Input::e($s['reporter_name']??'—')?></td>
-    <td class="text-muted mono"><?=Input::e($s['air_date']??'—')?></td>
-    <td><span class="bi bi<?=(int)$s['importance']?>"><?=(int)$s['importance']?></span></td>
-  </tr>
-  <?php endforeach; ?>
-  </tbody>
-</table>
+<!-- Содержимое выбранного файла -->
+<div id="docx-view" style="display:none">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div id="docx-filename" style="font-weight:600;font-size:14px"></div>
+    <button class="btn btn-ghost btn-sm" onclick="closeDocx()">✕ Закрыть</button>
+  </div>
+  <div id="docx-table-wrap"></div>
 </div>
-<?php endif; ?>
 
-<?php endif; ?>
 </div>
+
+<script>
+var activeFileId=null;
+
+// ── Список файлов ──────────────────────────────────────────
+function loadFiles(){
+  var date=document.getElementById('filter-date').value;
+  fetch('/shoot-plan/files'+(date?'?date='+date:''))
+    .then(function(r){return r.json();})
+    .then(function(j){
+      var el=document.getElementById('files-list');
+      if(!j.ok||!j.files||!j.files.length){
+        el.innerHTML='<div style="font-size:13px;color:var(--text3)">Нет загруженных планов</div>';
+        return;
+      }
+      el.innerHTML='';
+      j.files.forEach(function(f){
+        var chip=document.createElement('div');
+        chip.className='file-chip';
+        chip.id='chip-'+f.id;
+        chip.innerHTML='<span>📄</span>'
+          +'<div><div style="font-weight:500">'+f.filename+'</div>'
+          +'<div style="font-size:11px;color:var(--text3)">'+(f.plan_date?f.plan_date+' · ':'')+f.uploader_name+'</div></div>';
+        chip.onclick=function(){openFile(f.id,f.filename);};
+        <?php if($isCoord): ?>
+        var del=document.createElement('span');
+        del.textContent='×';del.title='Удалить';
+        del.style.cssText='color:var(--red);font-size:18px;line-height:1;margin-left:4px;opacity:.7';
+        del.onclick=function(e){
+          e.stopPropagation();
+          if(!confirm('Удалить «'+f.filename+'»?'))return;
+          var fd=new FormData();fd.append('_csrf',getCsrf());
+          fetch('/shoot-plan/file/'+f.id+'/delete',{method:'POST',body:fd})
+            .then(function(r){return r.json();})
+            .then(function(j){if(j.ok){toast('Файл удалён');loadFiles();if(activeFileId==f.id)closeDocx();}});
+        };
+        chip.appendChild(del);
+        <?php endif; ?>
+        el.appendChild(chip);
+      });
+    })
+    .catch(function(){});
+}
+
+// ── Открыть сохранённый файл ───────────────────────────────
+function openFile(id, name){
+  // Снимаем active с предыдущего
+  document.querySelectorAll('.file-chip').forEach(function(c){c.classList.remove('active');});
+  var chip=document.getElementById('chip-'+id);
+  if(chip) chip.classList.add('active');
+  activeFileId=id;
+  document.getElementById('docx-filename').textContent=name;
+  document.getElementById('docx-view').style.display='block';
+  document.getElementById('docx-table-wrap').innerHTML='<div style="color:var(--text3);padding:16px">⏳ Загрузка...</div>';
+  fetch('/shoot-plan/file/'+id)
+    .then(function(r){return r.arrayBuffer();})
+    .then(function(buf){renderDocx(buf,name);})
+    .catch(function(){document.getElementById('docx-table-wrap').innerHTML='<div style="color:var(--red)">Ошибка загрузки</div>';});
+}
+
+function closeDocx(){
+  document.getElementById('docx-view').style.display='none';
+  document.querySelectorAll('.file-chip').forEach(function(c){c.classList.remove('active');});
+  activeFileId=null;
+}
+
+// ── Загрузка нового файла ──────────────────────────────────
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById('upload-area').classList.remove('drag');
+  if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+}
+
+function handleFile(file){
+  if(!file) return;
+  if(!file.name.match(/\.docx?$/i)){setUploadStatus('❌ Только .docx файлы');return;}
+  if(file.size>10*1024*1024){setUploadStatus('❌ Максимум 10 МБ');return;}
+  setUploadStatus('⏳ Загружаю...');
+  var fd=new FormData();
+  fd.append('_csrf',getCsrf());
+  fd.append('plan_file',file);
+  fd.append('plan_date',document.getElementById('upload-date').value||'');
+  fd.append('show_id',  document.getElementById('upload-show').value||'');
+  fetch('/shoot-plan/upload',{method:'POST',body:fd})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j.ok){
+        setUploadStatus('✅ Файл сохранён — виден всем участникам');
+        toast('План съёмок загружен');
+        loadFiles();
+        // Сразу открываем
+        openFile(j.id,j.name);
+      } else {
+        setUploadStatus('❌ '+(j.error||'Ошибка'));
+      }
+    })
+    .catch(function(){setUploadStatus('❌ Ошибка сети');});
+}
+
+function setUploadStatus(msg){
+  var el=document.getElementById('upload-status');
+  if(el) el.textContent=msg;
+}
+
+// ── Рендер DOCX ───────────────────────────────────────────
+function renderDocx(arrayBuffer, name){
+  if(typeof mammoth==='undefined'){
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
+    s.onload=function(){renderDocx(arrayBuffer,name);};
+    s.onerror=function(){document.getElementById('docx-table-wrap').innerHTML='<div style="color:var(--red)">Ошибка загрузки mammoth.js</div>';};
+    document.head.appendChild(s);
+    return;
+  }
+  mammoth.convertToHtml({arrayBuffer:arrayBuffer})
+    .then(function(result){
+      var wrap=document.getElementById('docx-table-wrap');
+      var parser=new DOMParser();
+      var doc=parser.parseFromString(result.value,'text/html');
+      var tables=doc.querySelectorAll('table');
+      if(!tables.length){
+        wrap.innerHTML='<div style="background:var(--bg3);border-radius:8px;padding:16px;line-height:1.8">'+result.value+'</div>';
+      } else {
+        wrap.innerHTML='';
+        tables.forEach(function(tbl,i){
+          if(tables.length>1){
+            var h=document.createElement('div');
+            h.className='section-title';h.style.marginTop=i?'24px':'0';
+            h.textContent='Таблица '+(i+1);wrap.appendChild(h);
+          }
+          tbl.querySelectorAll('[style],[width],[bgcolor]').forEach(function(el){
+            el.removeAttribute('style');el.removeAttribute('width');el.removeAttribute('bgcolor');
+          });
+          var first=tbl.querySelector('tr');
+          if(first) first.querySelectorAll('td').forEach(function(td){
+            var th=document.createElement('th');th.innerHTML=td.innerHTML;td.parentNode.replaceChild(th,td);
+          });
+          wrap.appendChild(tbl.cloneNode(true));
+        });
+      }
+    })
+    .catch(function(e){document.getElementById('docx-table-wrap').innerHTML='<div style="color:var(--red)">Ошибка: '+e.message+'</div>';});
+}
+
+// ── Инициализация ─────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',function(){
+  loadFiles();
+  document.getElementById('filter-date').addEventListener('change',function(){
+    closeDocx();  // закрываем текущий план при смене даты
+    loadFiles();
+  });
+  document.getElementById('filter-show').addEventListener('change',function(){
+    closeDocx();
+    loadFiles();
+  });
+});
+</script>

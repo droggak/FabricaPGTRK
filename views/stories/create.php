@@ -32,10 +32,13 @@ $teamRoles = [
       <?php foreach($types as $t): ?><option value="<?=$t['id']?>" <?=($_POST['material_type_id']??'')==$t['id']?'selected':''?>><?=Input::e($t['name'])?></option><?php endforeach; ?>
       </select>
     </div>
-    <div class="form-group"><label>Важность</label>
-      <select name="importance"><?php for($i=1;$i<=5;$i++): ?><option value="<?=$i?>" <?=($_POST['importance']??3)==$i?'selected':''?>><?=$i?><?=$i==1?' — Низкая':($i==3?' — Средняя':($i==5?' — Высокая':''))?></option><?php endfor; ?></select>
+    <div class="form-group" style="max-width:160px"><label>Важность</label>
+      <select name="importance" style="width:100%"><?php for($i=1;$i<=5;$i++): ?><option value="<?=$i?>" <?=($_POST['importance']??3)==$i?'selected':''?>><?=$i?><?=$i==1?' — Низкая':($i==3?' — Средняя':($i==5?' — Высокая':''))?></option><?php endfor; ?></select>
     </div>
-    <div class="form-group"><label>Плановый хронометраж</label><input type="text" name="estimated_duration" placeholder="00:03:00" value="<?=Input::e($_POST['estimated_duration']??'')?>"></div>
+    <div class="form-group" style="max-width:160px"><label>Плановый хронометраж</label>
+      <div class="time-picker" id="tp-est-c" style=""></div>
+      <input type="hidden" name="estimated_duration" id="tp-est-c-h-inp" value="<?=Input::e($_POST['estimated_duration']??'00:03:00')?>">
+    </div>
   </div>
 </div>
 <div class="detail-card">
@@ -157,3 +160,85 @@ document.addEventListener('DOMContentLoaded',function(){ initTeamSearch(); });
 <div class="btn-group"><button type="submit" class="btn btn-accent">Создать сюжет</button><a href="/stories" class="btn btn-ghost">Отмена</a></div>
 </form>
 </div>
+
+<script>
+(function(){
+  function pad(n){return String(n).padStart(2,'0');}
+  function makeFormTP(containerId, hiddenId, initVal){
+    var el=document.getElementById(containerId);
+    if(!el) return;
+    var p=(initVal||'00:00:00').split(':');
+    var hh=Math.min(23,parseInt(p[0])||0),mm=Math.min(59,parseInt(p[1])||0),ss=Math.min(59,parseInt(p[2])||0);
+    function upd(){
+      ['h','m','s'].forEach(function(seg){
+        var inp=document.getElementById(containerId+'-'+seg);
+        if(inp) inp.value=pad(seg==='h'?hh:seg==='m'?mm:ss);
+      });
+      var hidden=document.getElementById(hiddenId);
+      if(hidden) hidden.value=pad(hh)+':'+pad(mm)+':'+pad(ss);
+    }
+    el.style.cssText='display:inline-flex;align-items:center;width:100%;'+
+      'background:var(--bg3);border:1px solid var(--border);border-radius:6px;'+
+      'padding:4px 8px;gap:0;font-family:var(--mono);box-sizing:border-box';
+    ['h','m','s'].forEach(function(seg,i){
+      if(i>0){
+        var sep=document.createElement('span');
+        sep.textContent=':';
+        sep.style.cssText='font-size:13px;font-weight:600;color:var(--text3);padding:0 1px;flex-shrink:0;align-self:center';
+        el.appendChild(sep);
+      }
+      var wrap=document.createElement('div');
+      wrap.style.cssText='display:flex;flex-direction:column;align-items:center;flex:1;min-width:0';
+      // Кнопка вверх
+      var up=document.createElement('button');up.type='button';up.textContent='▴';
+      up.style.cssText='width:100%;border:none;background:none;color:var(--text3);cursor:pointer;'+
+        'font-size:9px;line-height:1;padding:1px 0;display:block';
+      // Поле ввода — без стрелок браузера
+      var inp=document.createElement('input');
+      inp.type='text'; // text вместо number — нет нативных стрелок!
+      inp.inputMode='numeric';inp.pattern='[0-9]*';
+      inp.id=containerId+'-'+seg;inp.maxLength=2;
+      inp.style.cssText='width:100%;border:none;background:none;color:var(--text);'+
+        'font-family:var(--mono);font-size:13px;font-weight:600;text-align:center;'+
+        'outline:none;padding:2px 0;line-height:1';
+      // Кнопка вниз
+      var dn=document.createElement('button');dn.type='button';dn.textContent='▾';
+      dn.style.cssText=up.style.cssText;
+      // Обработчики
+      up.addEventListener('click',function(e){
+        e.preventDefault();
+        if(seg==='h')hh=(hh+1)%24;if(seg==='m')mm=(mm+1)%60;if(seg==='s')ss=(ss+1)%60;upd();
+      });
+      dn.addEventListener('click',function(e){
+        e.preventDefault();
+        if(seg==='h')hh=(hh+23)%24;if(seg==='m')mm=(mm+59)%60;if(seg==='s')ss=(ss+59)%60;upd();
+      });
+      inp.addEventListener('blur',function(){
+        var v=Math.max(0,Math.min(parseInt(this.value)||0,seg==='h'?23:59));
+        if(seg==='h')hh=v;if(seg==='m')mm=v;if(seg==='s')ss=v;upd();
+      });
+      inp.addEventListener('keydown',function(e){
+        if(e.key==='ArrowUp'){e.preventDefault();up.click();}
+        if(e.key==='ArrowDown'){e.preventDefault();dn.click();}
+      });
+      inp.addEventListener('wheel',function(e){
+        e.preventDefault();
+        if(seg==='h')hh=(hh+(e.deltaY<0?1:23))%24;
+        if(seg==='m')mm=(mm+(e.deltaY<0?1:59))%60;
+        if(seg==='s')ss=(ss+(e.deltaY<0?1:59))%60;upd();
+      },{passive:false});
+      [up,dn].forEach(function(b){
+        b.addEventListener('mouseenter',function(){this.style.color='var(--accent)';});
+        b.addEventListener('mouseleave',function(){this.style.color='var(--text3)';});
+      });
+      wrap.appendChild(up);wrap.appendChild(inp);wrap.appendChild(dn);
+      el.appendChild(wrap);
+    });
+    upd();
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    var hInp=document.getElementById('tp-est-c-h-inp');
+    makeFormTP('tp-est-c','tp-est-c-h-inp',hInp?hInp.value:'00:03:00');
+  });
+})();
+</script>

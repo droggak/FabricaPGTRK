@@ -12,29 +12,20 @@
 </style>
 
 <div class="page-header">
-  <div><div class="page-title">Сотрудники</div><div class="page-subtitle">Всего: <?=count($users)?></div></div>
+  <div><div class="page-title">Сотрудники</div><div class="page-subtitle">Всего: <?=($total??count($users))?></div></div>
   <a href="/admin/users/create" class="btn btn-accent btn-sm">+ Добавить сотрудника</a>
 </div>
 <div class="page-body">
 
-<div class="table-toolbar" style="margin-bottom:16px">
-  <input class="search-input" type="text" id="user-search" placeholder="🔍 Поиск по имени или логину..." oninput="filterUsers(this.value)" style="width:300px">
-  <select class="filter-select" id="role-filter" onchange="filterUsers(document.getElementById('user-search').value)">
-    <option value="">Все роли</option>
-    <?php
-    $RL=['admin'=>'Администратор','coordinator'=>'Координатор','reporter'=>'Корреспондент',
-         'editor'=>'Редактор','operator'=>'Оператор','montager'=>'Монтажёр',
-         'release'=>'Выпускающий редактор','driver'=>'Водитель'];
-    foreach($RL as $slug=>$label): ?>
-    <option value="<?=$slug?>"><?=$label?></option>
-    <?php endforeach; ?>
-  </select>
-  <select class="filter-select" id="status-filter" onchange="filterUsers(document.getElementById('user-search').value)">
-    <option value="">Все</option>
-    <option value="active">Активные</option>
-    <option value="inactive">Деактивированные</option>
-  </select>
-</div>
+<form method="GET" action="/admin/users" class="table-toolbar" style="margin-bottom:16px">
+  <input class="search-input" type="text" name="search"
+         placeholder="🔍 Поиск по имени или логину..."
+         value="<?=\App\Core\Input::e($search??'')?>" style="width:300px"
+         onkeydown="if(event.key==='Enter'){this.form.submit();}">
+  <button type="submit" class="btn btn-ghost btn-sm">Найти</button>
+  <a href="/admin/users" class="btn btn-ghost btn-sm">Сбросить</a>
+  <span style="font-size:13px;color:var(--text3);margin-left:auto"><?=($total??count($users))?> сотрудников</span>
+</form>
 
 <div class="table-wrap">
 <table class="user-table" id="user-table">
@@ -106,26 +97,10 @@
 <div id="no-users" style="display:none" class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">Пользователи не найдены</div></div>
 </div>
 
-<script>
-function filterUsers(q){
-  q=(q||'').toLowerCase().trim();
-  const roleF=document.getElementById('role-filter').value;
-  const statusF=document.getElementById('status-filter').value;
-  let visible=0;
-  document.querySelectorAll('.user-row').forEach(row=>{
-    const name=row.dataset.name||'';
-    const login=row.dataset.login||'';
-    const role=row.dataset.role||'';
-    const extra=(row.dataset.extraRoles||'').split(',');
-    const active=row.dataset.active;
-    const allRoles=[role,...extra];
-    const matchQ=!q||name.includes(q)||login.includes(q);
-    const matchRole=!roleF||allRoles.includes(roleF);
-    const matchStatus=!statusF||active===statusF;
-    const show=matchQ&&matchRole&&matchStatus;
-    row.style.display=show?'':'none';
-    if(show)visible++;
-  });
-  document.getElementById('no-users').style.display=visible===0?'block':'none';
-}
-</script>
+<?php
+use App\Core\Paginator;
+if(($pages??1) > 1):
+    $qp = array_filter(['search'=>$search??''], fn($v)=>$v!=='');
+    echo Paginator::render($page??1, $pages??1, $qp);
+endif;
+?>
